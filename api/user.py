@@ -33,8 +33,8 @@ class UserAPI:
                 return {'message': f'Email is missing or in the wrong format'}, 400
             password = body.get('password')
             dob = body.get('dob')
-
             ''' #1: Key code block, setup USER OBJECT '''
+            print(dob)
             uo = User(name=name, uid=uid, email=email)
             
             ''' Additional garbage error checking '''
@@ -47,7 +47,6 @@ class UserAPI:
                     uo.dob = datetime.strptime(dob, '%m-%d-%Y').date()
                 except:
                     return {'message': f'Date of birth format error {dob}, must be mm-dd-yyyy'}, 400
-            
             ''' #2: Key Code block to add user to database '''
             # create user in database
             user = uo.create()
@@ -57,7 +56,7 @@ class UserAPI:
             # failure returns error
             return {'message': f'Processed {name}, either a format error or User ID {uid} is duplicate'}, 400
 
-        @token_required
+        @token_required()
         def get(self, current_user): # Read Method
             users = User.query.all()    # read/extract all users from database
             json_ready = [user.read() for user in users]  # prepare output in json
@@ -68,12 +67,15 @@ class UserAPI:
         def post(self):
             body = request.get_json()
             uid = body.get('uid')
+            print(uid)
             if uid is None:
                 return {'message': f'User ID missing'}, 400
             email = body.get('email')
+            print(email)
             if email is None or "@" not in email:
                 return {'message': f'Email is blank or has an invalid format'}, 400
             user = User.query.filter_by(_uid=uid).first()
+            print(user)
             if user:
                 try:
                     user.update_email(email)
@@ -83,19 +85,19 @@ class UserAPI:
                         "error": "Something went wrong",
                         "message": str(e)
                     }, 500
-        def delete(self):
+        
+        @token_required('Admin')
+        def delete(self, _): # Delete Method
             body = request.get_json()
             uid = body.get('uid')
             user = User.query.filter_by(_uid=uid).first()
-            if user:
-                try:
-                    user.delete()
-                    return {f'{uid} has been deleted'}
-                except Exception as e:
-                    return {
-                        "error": "Something went wrong",
-                        "message": str(e)
-                    }, 500
+            if user is None:
+                return {'message': f'User {uid} not found'}, 404
+            json = user.read()
+            user.delete() 
+            # 204 is the status code for delete with no json response
+            return f"Deleted user: {json}", 204 # use 200 to test with Postman
+                
 
     class _Security(Resource):
         def post(self):
@@ -120,7 +122,7 @@ class UserAPI:
                 if user:
                     try:
                         token = jwt.encode(
-                            {"_uid": user._uid},
+                            {"_uid": user._uid, "role": user.role},
                             current_app.config["SECRET_KEY"],
                             algorithm="HS256"
                         )
